@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use crate::config::Config;
+use crate::dbus::BootEnvironmentProxy;
 use crate::fl;
 use cosmic::applet::{menu_button, padded_control};
 use cosmic::cosmic_config::{self, CosmicConfigEntry};
@@ -13,6 +14,8 @@ use cosmic::theme;
 use cosmic::widget::{divider, radio, text};
 use futures_util::SinkExt;
 use std::path::PathBuf;
+use zbus::fdo::ObjectManagerProxy;
+use zbus::zvariant::OwnedObjectPath;
 
 /// Placeholder for boot environment root type.
 /// TODO: Replace with actual Root type from your ZFS library.
@@ -26,6 +29,8 @@ pub struct Root {
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct BootEnvironment {
+    /// The D-Bus object path for this boot environment.
+    pub path: OwnedObjectPath,
     /// The name of this boot environment.
     pub name: String,
     /// The boot environment root.
@@ -70,6 +75,94 @@ pub enum Message {
     UpdateConfig(Config),
     BootSettingsClicked,
     ActivateEnvironment(usize),
+    BootEnvironmentsLoaded(Vec<BootEnvironment>),
+}
+
+/// Query boot environments from D-Bus
+async fn load_boot_environments() -> Result<Vec<BootEnvironment>, zbus::Error> {
+    // Connect to the system bus
+    let connection = zbus::Connection::system().await?;
+
+    // Get the ObjectManager to list all boot environment objects
+    let object_manager = ObjectManagerProxy::builder(&connection)
+        .destination("ca.kamacite.BootEnvironments1")?
+        .path("/ca/kamacite/BootEnvironments")?
+        .build()
+        .await?;
+
+    // Get all managed objects
+    let managed_objects = object_manager.get_managed_objects().await?;
+
+    let mut environments = Vec::new();
+
+    // Iterate through each object path
+    for (path, _interfaces) in managed_objects {
+        // Create a proxy for this boot environment
+        let proxy = BootEnvironmentProxy::builder(&connection)
+            .path(path.clone())?
+            .build()
+            .await?;
+
+        // Query all properties
+        let name = proxy.name().await?;
+        let root_str = proxy.root().await?;
+        let guid = proxy.guid().await?;
+        let description_str = proxy.description().await?;
+        let mountpoint_str = proxy.mountpoint().await?;
+        let active = proxy.active().await?;
+        let next_boot = proxy.next_boot().await?;
+        let boot_once = proxy.boot_once().await?;
+        let space = proxy.space().await?;
+        let created = proxy.created().await?;
+
+        // Convert to our BootEnvironment type
+        let description = if description_str.is_empty() {
+            None
+        } else {
+            Some(description_str)
+        };
+
+        let mountpoint = if mountpoint_str.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(mountpoint_str))
+        };
+
+        environments.push(BootEnvironment {
+            path,
+            name,
+            root: Root { dataset: root_str },
+            guid,
+            description,
+            mountpoint,
+            active,
+            next_boot,
+            boot_once,
+            space,
+            created,
+        });
+    }
+
+    // Sort by creation time.
+    environments.sort_by(|a, b| a.created.cmp(&b.created));
+
+    Ok(environments)
+}
+
+/// Activate a boot environment by its D-Bus object path
+async fn activate_boot_environment(path: OwnedObjectPath) -> Result<(), zbus::Error> {
+    // Connect to the system bus
+    let connection = zbus::Connection::system().await?;
+
+    // Create a proxy for this boot environment
+    let proxy = BootEnvironmentProxy::builder(&connection)
+        .path(path)?
+        .build()
+        .await?;
+
+    // Activate it (not temporary)
+    proxy.activate(false).await?;
+    Ok(())
 }
 
 /// Create a COSMIC application from the app model
@@ -115,95 +208,23 @@ impl cosmic::Application for AppModel {
                     }
                 })
                 .unwrap_or_default(),
-            environments: vec![
-                BootEnvironment {
-                    name: "default".to_string(),
-                    root: Root {
-                        dataset: "rpool/ROOT/default".to_string(),
-                    },
-                    guid: 1234567890,
-                    description: Some("Current system configuration".to_string()),
-                    mountpoint: Some(PathBuf::from("/")),
-                    active: true,
-                    next_boot: true,
-                    boot_once: false,
-                    space: 15_000_000_000,
-                    created: 1704067200, // 2024-01-01
-                },
-                BootEnvironment {
-                    name: "backup-2024-10-01".to_string(),
-                    root: Root {
-                        dataset: "rpool/ROOT/backup-2024-10-01".to_string(),
-                    },
-                    guid: 1234567891,
-                    description: Some("Monthly backup from October".to_string()),
-                    mountpoint: None,
-                    active: false,
-                    next_boot: false,
-                    boot_once: false,
-                    space: 14_500_000_000,
-                    created: 1727740800, // 2024-10-01
-                },
-                BootEnvironment {
-                    name: "testing-kernel-6.16".to_string(),
-                    root: Root {
-                        dataset: "rpool/ROOT/testing-kernel-6.16".to_string(),
-                    },
-                    guid: 1234567892,
-                    description: Some("Testing new kernel version".to_string()),
-                    mountpoint: None,
-                    active: false,
-                    next_boot: false,
-                    boot_once: false,
-                    space: 15_200_000_000,
-                    created: 1728950400, // 2024-10-15
-                },
-                BootEnvironment {
-                    name: "stable-snapshot".to_string(),
-                    root: Root {
-                        dataset: "rpool/ROOT/stable-snapshot".to_string(),
-                    },
-                    guid: 1234567893,
-                    description: None,
-                    mountpoint: None,
-                    active: false,
-                    next_boot: false,
-                    boot_once: false,
-                    space: 14_800_000_000,
-                    created: 1720224000, // 2024-07-06
-                },
-                BootEnvironment {
-                    name: "pre-upgrade".to_string(),
-                    root: Root {
-                        dataset: "rpool/ROOT/pre-upgrade".to_string(),
-                    },
-                    guid: 1234567894,
-                    description: Some("Before system upgrade".to_string()),
-                    mountpoint: None,
-                    active: false,
-                    next_boot: false,
-                    boot_once: false,
-                    space: 13_900_000_000,
-                    created: 1715040000, // 2024-05-07
-                },
-                BootEnvironment {
-                    name: "recovery".to_string(),
-                    root: Root {
-                        dataset: "rpool/ROOT/recovery".to_string(),
-                    },
-                    guid: 1234567895,
-                    description: None,
-                    mountpoint: None,
-                    active: false,
-                    next_boot: false,
-                    boot_once: false,
-                    space: 12_000_000_000,
-                    created: 1699660800, // 2023-11-11
-                },
-            ],
+            // Start with empty list; will be populated from D-Bus
+            environments: Vec::new(),
         };
 
-        (app, Task::none())
+        // Spawn task to load boot environments from D-Bus
+        let task = Task::perform(load_boot_environments(), |result| {
+            cosmic::Action::App(match result {
+                Ok(environments) => Message::BootEnvironmentsLoaded(environments),
+                Err(e) => {
+                    eprintln!("Failed to load boot environments: {}", e);
+                    // Return empty list on error
+                    Message::BootEnvironmentsLoaded(Vec::new())
+                }
+            })
+        });
+
+        (app, task)
     }
 
     fn on_close_requested(&self, id: Id) -> Option<Message> {
@@ -346,24 +367,41 @@ impl cosmic::Application for AppModel {
                 // Placeholder: would open boot settings configuration
                 println!("Boot Settings clicked");
             }
+            Message::BootEnvironmentsLoaded(environments) => {
+                self.environments = environments;
+            }
             Message::ActivateEnvironment(idx) => {
-                // Update next_boot flags: deselect all, then select the chosen one
+                // Get the path of the environment to activate
                 if idx < self.environments.len() {
-                    // First, clear next_boot from all environments
-                    for env in &mut self.environments {
-                        env.next_boot = false;
-                        env.boot_once = false;
-                    }
+                    let path = self.environments[idx].path.clone();
 
-                    // Then set next_boot for the selected environment
+                    // Update local state optimistically
+                    for e in &mut self.environments {
+                        e.next_boot = false;
+                        e.boot_once = false;
+                    }
                     self.environments[idx].next_boot = true;
 
-                    // Log for debugging
-                    let env = &self.environments[idx];
-                    println!("Activated boot environment: {}", env.name);
-                    if let Some(desc) = &env.description {
-                        println!("  Description: {}", desc);
-                    }
+                    // Spawn task to activate via D-Bus and reload
+                    return Task::perform(
+                        async move {
+                            // Try to activate
+                            if let Err(e) = activate_boot_environment(path).await {
+                                eprintln!("Failed to activate boot environment: {}", e);
+                            }
+                            // Always reload to get current state
+                            load_boot_environments().await
+                        },
+                        |result| {
+                            cosmic::Action::App(match result {
+                                Ok(environments) => Message::BootEnvironmentsLoaded(environments),
+                                Err(e) => {
+                                    eprintln!("Failed to reload boot environments: {}", e);
+                                    Message::BootEnvironmentsLoaded(Vec::new())
+                                }
+                            })
+                        },
+                    );
                 }
             }
             Message::TogglePopup => {
