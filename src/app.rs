@@ -52,7 +52,7 @@ pub enum Message {
     PopupClosed(Id),
     SubscriptionChannel,
     BootSettingsClicked,
-    ActivateEnvironment(usize),
+    ActivateEnvironment(zbus::zvariant::OwnedObjectPath),
     BootEnvironmentsLoaded(Vec<BootEnvironment>),
 }
 
@@ -243,7 +243,9 @@ impl cosmic::Application for AppModel {
             // The radio button will be checked if this is the next_boot environment
             let selected_idx = self.environments.iter().position(|e| e.next_boot);
 
-            let env_row = radio(label, idx, selected_idx, Message::ActivateEnvironment);
+            let env_row = radio(label, idx, selected_idx, |_idx| {
+                Message::ActivateEnvironment(env.path.clone())
+            });
 
             // Wrap the radio button in a row with the status label
             let row_content = row![
@@ -309,32 +311,27 @@ impl cosmic::Application for AppModel {
             Message::BootEnvironmentsLoaded(environments) => {
                 self.environments = environments;
             }
-            Message::ActivateEnvironment(idx) => {
-                // Get the path of the environment to activate
-                if idx < self.environments.len() {
-                    let path = self.environments[idx].path.clone();
-
-                    // Spawn task to activate via D-Bus and reload
-                    return Task::perform(
-                        async move {
-                            // Try to activate
-                            if let Err(e) = activate_boot_environment(path).await {
-                                eprintln!("Failed to activate boot environment: {}", e);
+            Message::ActivateEnvironment(path) => {
+                // Spawn task to activate via D-Bus and reload
+                return Task::perform(
+                    async move {
+                        // Try to activate
+                        if let Err(e) = activate_boot_environment(path).await {
+                            eprintln!("Failed to activate boot environment: {}", e);
+                        }
+                        // Always reload to get current state
+                        load_boot_environments().await
+                    },
+                    |result| {
+                        cosmic::Action::App(match result {
+                            Ok(environments) => Message::BootEnvironmentsLoaded(environments),
+                            Err(e) => {
+                                eprintln!("Failed to reload boot environments: {}", e);
+                                Message::BootEnvironmentsLoaded(Vec::new())
                             }
-                            // Always reload to get current state
-                            load_boot_environments().await
-                        },
-                        |result| {
-                            cosmic::Action::App(match result {
-                                Ok(environments) => Message::BootEnvironmentsLoaded(environments),
-                                Err(e) => {
-                                    eprintln!("Failed to reload boot environments: {}", e);
-                                    Message::BootEnvironmentsLoaded(Vec::new())
-                                }
-                            })
-                        },
-                    );
-                }
+                        })
+                    },
+                );
             }
             Message::TogglePopup => {
                 return if let Some(p) = self.popup.take() {
