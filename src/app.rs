@@ -77,6 +77,8 @@ pub struct AppModel {
     popup: Option<Id>,
     /// List of boot environments.
     environments: Vec<BootEnvironmentObject>,
+    /// The active D-Bus connection, if any.
+    conn: Option<zbus::Connection>,
 }
 
 /// Messages emitted by the application and its widgets.
@@ -88,15 +90,16 @@ pub enum Message {
     BootSettingsClicked,
     ActivateEnvironment(zbus::zvariant::OwnedObjectPath),
     BootEnvironmentsLoaded(Vec<BootEnvironmentObject>),
+    Connected(zbus::Connection),
+    Disconnected,
 }
 
-/// Query boot environments from D-Bus
-async fn load_boot_environments() -> Result<Vec<BootEnvironmentObject>, zbus::Error> {
-    // Connect to the system bus
-    let connection = zbus::Connection::system().await?;
-
+/// Query boot environments from D-Bus using the provided connection
+async fn load_boot_environments(
+    connection: &zbus::Connection,
+) -> Result<Vec<BootEnvironmentObject>, zbus::Error> {
     // Get the ObjectManager to list all boot environment objects
-    let object_manager = ObjectManagerProxy::builder(&connection)
+    let object_manager = ObjectManagerProxy::builder(connection)
         .destination("ca.kamacite.BootEnvironments1")?
         .path("/ca/kamacite/BootEnvironments")?
         .build()
@@ -116,13 +119,13 @@ async fn load_boot_environments() -> Result<Vec<BootEnvironmentObject>, zbus::Er
     Ok(environments)
 }
 
-/// Activate a boot environment by its D-Bus object path
-async fn activate_boot_environment(path: OwnedObjectPath) -> Result<(), zbus::Error> {
-    // Connect to the system bus
-    let connection = zbus::Connection::system().await?;
-
+/// Activate a boot environment by its D-Bus object path using the provided connection
+async fn activate_boot_environment(
+    connection: &zbus::Connection,
+    path: OwnedObjectPath,
+) -> Result<(), zbus::Error> {
     // Create a proxy for this boot environment
-    let proxy = BootEnvironmentProxy::builder(&connection)
+    let proxy = BootEnvironmentProxy::builder(connection)
         .path(path)?
         .build()
         .await?;
@@ -165,16 +168,16 @@ impl cosmic::Application for AppModel {
             popup: None,
             // Start with empty list; will be populated from D-Bus
             environments: Vec::new(),
+            conn: None,
         };
 
-        // Spawn task to load boot environments from D-Bus
-        let task = Task::perform(load_boot_environments(), |result| {
+        // Spawn a task to open the D-Bus connection.
+        let task = Task::perform(zbus::Connection::system(), |result| {
             cosmic::Action::App(match result {
-                Ok(environments) => Message::BootEnvironmentsLoaded(environments),
+                Ok(conn) => Message::Connected(conn),
                 Err(e) => {
-                    eprintln!("Failed to load boot environments: {}", e);
-                    // Return empty list on error
-                    Message::BootEnvironmentsLoaded(Vec::new())
+                    eprintln!("Failed to connect to D-Bus: {}", e);
+                    Message::Disconnected
                 }
             })
         });
@@ -311,30 +314,56 @@ impl cosmic::Application for AppModel {
                 // Placeholder: would open boot settings configuration
                 println!("Boot Settings clicked");
             }
-            Message::BootEnvironmentsLoaded(environments) => {
-                self.environments = environments;
-            }
-            Message::ActivateEnvironment(path) => {
-                // Spawn task to activate via D-Bus and reload
+            Message::Connected(conn) => {
+                // Store the active connection and start a task to load existing
+                // boot environments.
+                self.conn = Some(conn.clone());
                 return Task::perform(
-                    async move {
-                        // Try to activate
-                        if let Err(e) = activate_boot_environment(path).await {
-                            eprintln!("Failed to activate boot environment: {}", e);
-                        }
-                        // Always reload to get current state
-                        load_boot_environments().await
-                    },
+                    async move { load_boot_environments(&conn).await },
                     |result| {
                         cosmic::Action::App(match result {
                             Ok(environments) => Message::BootEnvironmentsLoaded(environments),
                             Err(e) => {
-                                eprintln!("Failed to reload boot environments: {}", e);
+                                eprintln!("Failed to load boot environments: {}", e);
                                 Message::BootEnvironmentsLoaded(Vec::new())
                             }
                         })
                     },
                 );
+            }
+            Message::Disconnected => {
+                self.conn = None;
+                self.environments.clear();
+            }
+            Message::BootEnvironmentsLoaded(environments) => {
+                self.environments = environments;
+            }
+            Message::ActivateEnvironment(path) => {
+                if let Some(conn) = self.conn.clone() {
+                    return Task::perform(
+                        async move {
+                            // Try to activate
+                            if let Err(e) = activate_boot_environment(&conn, path).await {
+                                eprintln!("Failed to activate boot environment: {}", e);
+                            }
+                            // Always reload to get current state
+                            load_boot_environments(&conn).await
+                        },
+                        |result| {
+                            cosmic::Action::App(match result {
+                                Ok(environments) => Message::BootEnvironmentsLoaded(environments),
+                                Err(e) => {
+                                    eprintln!("Failed to reload boot environments: {}", e);
+                                    Message::BootEnvironmentsLoaded(Vec::new())
+                                }
+                            })
+                        },
+                    );
+                } else {
+                    // It should never be possible to send this message without
+                    // an active D-Bus connection.
+                    eprintln!("Failed to activate boot environment: no D-Bus connection available");
+                }
             }
             Message::TogglePopup => {
                 return if let Some(p) = self.popup.take() {
