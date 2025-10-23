@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
 mod app;
-mod config;
 mod dbus;
 mod i18n;
 

@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use crate::config::Config;
-use crate::dbus::BootEnvironmentProxy;
-use crate::fl;
 use cosmic::applet::{menu_button, padded_control};
-use cosmic::cosmic_config::{self, CosmicConfigEntry};
 use cosmic::cosmic_theme::Spacing;
 use cosmic::iced::widget::{column, row};
 use cosmic::iced::{window::Id, Alignment, Length, Limits, Subscription};
@@ -13,42 +9,27 @@ use cosmic::prelude::*;
 use cosmic::theme;
 use cosmic::widget::{divider, radio, text};
 use futures_util::SinkExt;
-use std::path::PathBuf;
 use zbus::fdo::ObjectManagerProxy;
 use zbus::zvariant::OwnedObjectPath;
 
-/// Placeholder for boot environment root type.
-/// TODO: Replace with actual Root type from your ZFS library.
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct Root {
-    pub dataset: String,
-}
+use crate::dbus::BootEnvironmentProxy;
+use crate::fl;
 
 /// Represents a boot environment.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct BootEnvironment {
     /// The D-Bus object path for this boot environment.
     pub path: OwnedObjectPath,
     /// The name of this boot environment.
     pub name: String,
-    /// The boot environment root.
-    pub root: Root,
-    /// The ZFS dataset GUID.
-    pub guid: u64,
     /// A description for this boot environment, if any.
     pub description: Option<String>,
-    /// If the boot environment is currently mounted, this is its mountpoint.
-    pub mountpoint: Option<PathBuf>,
     /// Whether the system is currently booted into this boot environment.
     pub active: bool,
     /// Whether the system will reboot into this environment.
     pub next_boot: bool,
     /// Whether the system will reboot into this environment temporarily.
     pub boot_once: bool,
-    /// Bytes on the filesystem associated with this boot environment.
-    pub space: u64,
     /// Unix timestamp for when this boot environment was created.
     pub created: i64,
 }
@@ -60,8 +41,6 @@ pub struct AppModel {
     core: cosmic::Core,
     /// The popup id.
     popup: Option<Id>,
-    /// Configuration data that persists between application runs.
-    config: Config,
     /// List of boot environments.
     environments: Vec<BootEnvironment>,
 }
@@ -72,7 +51,6 @@ pub enum Message {
     TogglePopup,
     PopupClosed(Id),
     SubscriptionChannel,
-    UpdateConfig(Config),
     BootSettingsClicked,
     ActivateEnvironment(usize),
     BootEnvironmentsLoaded(Vec<BootEnvironment>),
@@ -105,14 +83,10 @@ async fn load_boot_environments() -> Result<Vec<BootEnvironment>, zbus::Error> {
 
         // Query all properties
         let name = proxy.name().await?;
-        let root_str = proxy.root().await?;
-        let guid = proxy.guid().await?;
         let description_str = proxy.description().await?;
-        let mountpoint_str = proxy.mountpoint().await?;
         let active = proxy.active().await?;
         let next_boot = proxy.next_boot().await?;
         let boot_once = proxy.boot_once().await?;
-        let space = proxy.space().await?;
         let created = proxy.created().await?;
 
         // Convert to our BootEnvironment type
@@ -122,23 +96,13 @@ async fn load_boot_environments() -> Result<Vec<BootEnvironment>, zbus::Error> {
             Some(description_str)
         };
 
-        let mountpoint = if mountpoint_str.is_empty() {
-            None
-        } else {
-            Some(PathBuf::from(mountpoint_str))
-        };
-
         environments.push(BootEnvironment {
             path,
             name,
-            root: Root { dataset: root_str },
-            guid,
             description,
-            mountpoint,
             active,
             next_boot,
             boot_once,
-            space,
             created,
         });
     }
@@ -177,7 +141,7 @@ impl cosmic::Application for AppModel {
     type Message = Message;
 
     /// Unique identifier in RDNN (reverse domain name notation) format.
-    const APP_ID: &'static str = "com.github.kamacite-linux.cosmic-applet-boot-environment";
+    const APP_ID: &'static str = "ca.kamacite.cosmic-applet-boot-environment";
 
     fn core(&self) -> &cosmic::Core {
         &self.core
@@ -196,18 +160,6 @@ impl cosmic::Application for AppModel {
         let app = AppModel {
             core,
             popup: None,
-            config: cosmic_config::Config::new(Self::APP_ID, Config::VERSION)
-                .map(|context| match Config::get_entry(&context) {
-                    Ok(config) => config,
-                    Err((_errors, config)) => {
-                        // for why in errors {
-                        //     tracing::error!(%why, "error loading app config");
-                        // }
-
-                        config
-                    }
-                })
-                .unwrap_or_default(),
             // Start with empty list; will be populated from D-Bus
             environments: Vec::new(),
         };
@@ -238,7 +190,7 @@ impl cosmic::Application for AppModel {
     fn view(&self) -> Element<'_, Self::Message> {
         self.core
             .applet
-            .icon_button("display-symbolic")
+            .icon_button("drive-multidisk-symbolic")
             .on_press(Message::TogglePopup)
             .into()
     }
@@ -338,16 +290,6 @@ impl cosmic::Application for AppModel {
                     futures_util::future::pending().await
                 }),
             ),
-            // Watch for application configuration changes.
-            self.core()
-                .watch_config::<Config>(Self::APP_ID)
-                .map(|update| {
-                    // for why in update.errors {
-                    //     tracing::error!(?why, "app config error");
-                    // }
-
-                    Message::UpdateConfig(update.config)
-                }),
         ])
     }
 
@@ -359,9 +301,6 @@ impl cosmic::Application for AppModel {
         match message {
             Message::SubscriptionChannel => {
                 // For example purposes only.
-            }
-            Message::UpdateConfig(config) => {
-                self.config = config;
             }
             Message::BootSettingsClicked => {
                 // Placeholder: would open boot settings configuration
