@@ -34,6 +34,40 @@ pub struct BootEnvironmentObject {
     pub created: i64,
 }
 
+impl BootEnvironmentObject {
+    /// Construct a BootEnvironmentObject from a D-Bus dictionary of properties.
+    pub fn from_properties(
+        path: OwnedObjectPath,
+        props: &std::collections::HashMap<String, zbus::zvariant::OwnedValue>,
+    ) -> Result<Self, zbus::Error> {
+        // TODO: Is there something in zbus that will do this for us?
+        let get_prop = |name: &str| -> Result<zbus::zvariant::OwnedValue, zbus::Error> {
+            match props.get(name) {
+                Some(value) => value.try_clone().map_err(From::from),
+                None => Err(zbus::Error::MissingField),
+            }
+        };
+
+        // Special handling for optional properties.
+        let description_str: String = get_prop("Description")?.try_into()?;
+        let description = if description_str.is_empty() {
+            None
+        } else {
+            Some(description_str)
+        };
+
+        Ok(BootEnvironmentObject {
+            path,
+            name: get_prop("Name")?.try_into()?,
+            description,
+            active: get_prop("Active")?.try_into()?,
+            next_boot: get_prop("NextBoot")?.try_into()?,
+            boot_once: get_prop("BootOnce")?.try_into()?,
+            created: get_prop("Created")?.try_into()?,
+        })
+    }
+}
+
 /// The application model stores app-specific state used to describe its interface and
 /// drive its logic.
 pub struct AppModel {
@@ -68,43 +102,12 @@ async fn load_boot_environments() -> Result<Vec<BootEnvironmentObject>, zbus::Er
         .build()
         .await?;
 
-    // Get all managed objects
-    let managed_objects = object_manager.get_managed_objects().await?;
-
     let mut environments = Vec::new();
-
-    // Iterate through each object path
-    for (path, _interfaces) in managed_objects {
-        // Create a proxy for this boot environment
-        let proxy = BootEnvironmentProxy::builder(&connection)
-            .path(path.clone())?
-            .build()
-            .await?;
-
-        // Query all properties
-        let name = proxy.name().await?;
-        let description_str = proxy.description().await?;
-        let active = proxy.active().await?;
-        let next_boot = proxy.next_boot().await?;
-        let boot_once = proxy.boot_once().await?;
-        let created = proxy.created().await?;
-
-        // Convert to our BootEnvironment type
-        let description = if description_str.is_empty() {
-            None
-        } else {
-            Some(description_str)
-        };
-
-        environments.push(BootEnvironmentObject {
-            path,
-            name,
-            description,
-            active,
-            next_boot,
-            boot_once,
-            created,
-        });
+    for (path, interfaces) in object_manager.get_managed_objects().await? {
+        if let Some(props) = interfaces.get("ca.kamacite.BootEnvironment") {
+            let env = BootEnvironmentObject::from_properties(path, props)?;
+            environments.push(env);
+        }
     }
 
     // Sort by creation time.
