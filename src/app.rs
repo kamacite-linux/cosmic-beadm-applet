@@ -314,13 +314,6 @@ impl cosmic::Application for AppModel {
                 if idx < self.environments.len() {
                     let path = self.environments[idx].path.clone();
 
-                    // Update local state optimistically
-                    for e in &mut self.environments {
-                        e.next_boot = false;
-                        e.boot_once = false;
-                    }
-                    self.environments[idx].next_boot = true;
-
                     // Spawn task to activate via D-Bus and reload
                     return Task::perform(
                         async move {
