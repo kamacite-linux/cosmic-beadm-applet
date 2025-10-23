@@ -15,10 +15,10 @@ use zbus::zvariant::OwnedObjectPath;
 use crate::dbus::BootEnvironmentProxy;
 use crate::fl;
 
-/// Represents a boot environment.
+/// Represents a boot environment object exposed on the bus.
 #[derive(Debug, Clone)]
-pub struct BootEnvironment {
-    /// The D-Bus object path for this boot environment.
+pub struct BootEnvironmentObject {
+    /// The D-Bus object path foight n boot environment.
     pub path: OwnedObjectPath,
     /// The name of this boot environment.
     pub name: String,
@@ -42,7 +42,7 @@ pub struct AppModel {
     /// The popup id.
     popup: Option<Id>,
     /// List of boot environments.
-    environments: Vec<BootEnvironment>,
+    environments: Vec<BootEnvironmentObject>,
 }
 
 /// Messages emitted by the application and its widgets.
@@ -53,11 +53,11 @@ pub enum Message {
     SubscriptionChannel,
     BootSettingsClicked,
     ActivateEnvironment(zbus::zvariant::OwnedObjectPath),
-    BootEnvironmentsLoaded(Vec<BootEnvironment>),
+    BootEnvironmentsLoaded(Vec<BootEnvironmentObject>),
 }
 
 /// Query boot environments from D-Bus
-async fn load_boot_environments() -> Result<Vec<BootEnvironment>, zbus::Error> {
+async fn load_boot_environments() -> Result<Vec<BootEnvironmentObject>, zbus::Error> {
     // Connect to the system bus
     let connection = zbus::Connection::system().await?;
 
@@ -96,7 +96,7 @@ async fn load_boot_environments() -> Result<Vec<BootEnvironment>, zbus::Error> {
             Some(description_str)
         };
 
-        environments.push(BootEnvironment {
+        environments.push(BootEnvironmentObject {
             path,
             name,
             description,
