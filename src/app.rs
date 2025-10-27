@@ -7,7 +7,7 @@ use cosmic::iced::{window::Id, Alignment, Length, Limits, Subscription};
 use cosmic::iced_winit::commands::popup::{destroy_popup, get_popup};
 use cosmic::prelude::*;
 use cosmic::theme;
-use cosmic::widget::{divider, radio, text};
+use cosmic::widget::{divider, dropdown, text};
 use futures_util::SinkExt;
 use zbus::fdo::ObjectManagerProxy;
 use zbus::zvariant::OwnedObjectPath;
@@ -203,74 +203,82 @@ impl cosmic::Application for AppModel {
 
     fn view_window(&self, _id: Id) -> Element<'_, Self::Message> {
         let Spacing {
-            space_xxs,
-            space_s,
-            space_m,
-            ..
+            space_xxs, space_s, ..
         } = theme::active().cosmic().spacing;
 
         // Build the column starting with boot environment rows
         let mut content = column![];
 
-        // Add a row for each boot environment
-        for (idx, env) in self.environments.iter().enumerate() {
-            // Build status indicator text (localized)
-            let status_text = if env.active && env.next_boot {
-                Some(fl!("status-current"))
-            } else if env.active {
-                Some(fl!("status-current-temporary"))
-            } else if env.next_boot {
-                Some(fl!("status-next-boot"))
-            } else if env.boot_once {
-                Some(fl!("status-boot-once"))
+        // Display a summary of the active boot environment at the top.
+        if let Some(active_env) = self.environments.iter().find(|e| e.active) {
+            let title = if let Some(desc) = &active_env.description {
+                // TODO: Add elipses to overlong descriptions.
+                text::heading(format!("{} ({})", desc, active_env.name))
             } else {
-                None
+                text::monotext(&active_env.name)
             };
 
-            // Build the label - either single line (name only) or two lines (description + name)
-            let label: Element<'_, Message> = if let Some(desc) = &env.description {
-                // Two-line layout: description (larger) on top, name (smaller) below
-                column![text::body(desc), text::caption(&env.name),]
-                    .spacing(2)
-                    .into()
-            } else {
-                // Single line: just the name
-                text::body(&env.name).into()
-            };
-
-            // Create status label on the right if present
-            let status_label: Element<'_, Message> = if let Some(status) = status_text {
-                text::caption(status).into()
-            } else {
-                cosmic::widget::Space::with_width(Length::Fixed(0.0)).into()
-            };
-
-            // Create the row with radio button
-            // The radio button will be checked if this is the next_boot environment
-            let selected_idx = self.environments.iter().position(|e| e.next_boot);
-
-            let env_row = radio(label, idx, selected_idx, |_idx| {
-                Message::ActivateEnvironment(env.path.clone())
-            });
-
-            // Wrap the radio button in a row with the status label
-            let row_content = row![
-                env_row,
-                cosmic::widget::Space::with_width(Length::Fill),
-                status_label,
-            ]
-            .align_y(Alignment::Center)
-            .spacing(space_xxs)
-            .padding([space_xxs, space_m]);
-
-            content = content.push(row_content);
+            content = content.push(padded_control(
+                row![
+                    cosmic::widget::icon::from_name("drive-harddisk-system-symbolic").size(40),
+                    column![title, text::caption(fl!("active-boot-env")),].width(Length::Fill),
+                ]
+                .align_y(Alignment::Center)
+                .spacing(space_s),
+            ));
+        } else {
+            content = content.push(padded_control(
+                row![text::body(fl!("no-active-boot-env"))]
+                    .align_y(Alignment::Center)
+                    .spacing(space_s),
+            ));
         }
 
-        // Add divider before Boot Settings button
+        // Divider.
         content = content
             .push(padded_control(divider::horizontal::default()).padding([space_xxs, space_s]));
 
-        // Add Boot Settings button at the bottom
+        // A dropdown for activating boot environments, if they exist.
+        let dropdown_labels: Vec<String> = self
+            .environments
+            .iter()
+            .map(|env| {
+                // Build the label - either description or name
+                if let Some(desc) = &env.description {
+                    format!("{} ({})", desc, env.name)
+                } else {
+                    env.name.clone()
+                }
+            })
+            .collect();
+
+        if !dropdown_labels.is_empty() {
+            let paths: Vec<OwnedObjectPath> = self
+                .environments
+                .iter()
+                .map(|env| env.path.clone())
+                .collect();
+
+            content = content.push(padded_control(
+                row![
+                    text::body(fl!("reboot-into")).width(Length::Fill),
+                    dropdown(
+                        dropdown_labels,
+                        self.environments.iter().position(|e| e.next_boot),
+                        move |idx| { Message::ActivateEnvironment(paths[idx].clone()) }
+                    )
+                ]
+                .align_y(Alignment::Center)
+                .spacing(space_s),
+            ));
+
+            // Divider.
+            content = content
+                .push(padded_control(divider::horizontal::default()).padding([space_xxs, space_s]));
+        }
+
+        // The "Boot settings..." button at the bottom that could open a
+        // settings dialog.
         content = content.push(
             menu_button(text::body(fl!("boot-settings"))).on_press(Message::BootSettingsClicked),
         );

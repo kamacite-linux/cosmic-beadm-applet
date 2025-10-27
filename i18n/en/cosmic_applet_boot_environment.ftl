@@ -9,3 +9,6 @@ status-current = Current
 status-current-temporary = Current, temporary
 status-next-boot = Next boot
 status-boot-once = Boot once
+active-boot-env = Active Boot Environment
+no-active-boot-env = No active boot environment detected
+reboot-into = Reboot into...
