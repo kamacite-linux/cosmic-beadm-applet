@@ -130,8 +130,8 @@ async fn activate_boot_environment(
         .build()
         .await?;
 
-    // Activate it (not temporary)
-    proxy.activate(false).await?;
+    // Activate it temporarily.
+    proxy.activate(true).await?;
     Ok(())
 }
 
@@ -253,6 +253,13 @@ impl cosmic::Application for AppModel {
             .collect();
 
         if !dropdown_labels.is_empty() {
+            // Don't distinguish between temporary and permanent activations.
+            let selected_idx = self
+                .environments
+                .iter()
+                .position(|e| e.boot_once)
+                .or(self.environments.iter().position(|e| e.next_boot));
+
             let paths: Vec<OwnedObjectPath> = self
                 .environments
                 .iter()
@@ -262,11 +269,9 @@ impl cosmic::Application for AppModel {
             content = content.push(padded_control(
                 row![
                     text::body(fl!("reboot-into")).width(Length::Fill),
-                    dropdown(
-                        dropdown_labels,
-                        self.environments.iter().position(|e| e.next_boot),
-                        move |idx| { Message::ActivateEnvironment(paths[idx].clone()) }
-                    )
+                    dropdown(dropdown_labels, selected_idx, move |idx| {
+                        Message::ActivateEnvironment(paths[idx].clone())
+                    })
                 ]
                 .align_y(Alignment::Center)
                 .spacing(space_s),
