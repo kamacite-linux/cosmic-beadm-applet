@@ -4,7 +4,14 @@ mod app;
 mod dbus;
 mod i18n;
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 fn main() -> cosmic::iced::Result {
+    tracing_subscriber::fmt::init();
+    let _ = tracing_log::LogTracer::init();
+
+    tracing::info!(version = VERSION, "Starting boot environment applet");
+
     // Get the system's preferred languages.
     let requested_languages = i18n_embed::DesktopLanguageRequester::requested_languages();
 
