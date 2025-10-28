@@ -2,7 +2,7 @@
 Name=Cosmic Applet Boot Environment
 Comment=A COSMIC applet to help swap between ZFS boot environments
 Type=Application
-Icon=com.github.kamacite-linux.cosmic-applet-boot-environment
+Icon=ca.kamacite.cosmic-applet-boot-environment
 Exec=cosmic-applet-boot-environment %F
 Terminal=false
 StartupNotify=true

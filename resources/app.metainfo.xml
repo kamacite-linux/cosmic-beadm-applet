@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.github.kamacite-linux.cosmic-applet-boot-environment</id>
+  <id>ca.kamacite.cosmic-applet-boot-environment</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MPL-2.0</project_license>
   <name>Cosmic Applet Boot Environment</name>
@@ -9,9 +9,9 @@
     https://github.com/kamacite-linux/cosmic-applet-boot-environment/raw/main/resources/icons/hicolor/scalable/apps/icon.svg
   </icon>
   <url type="vcs-browser">https://github.com/kamacite-linux/cosmic-applet-boot-environment</url>
-  <launchable type="desktop-id">com.github.kamacite-linux.cosmic-applet-boot-environment.desktop</launchable>
+  <launchable type="desktop-id">ca.kamacite.cosmic-applet-boot-environment.desktop</launchable>
   <provides>
-    <id>com.github.kamacite-linux.cosmic-applet-boot-environment</id>
+    <id>ca.kamacite.cosmic-applet-boot-environment</id>
     <binaries>
       <binary>cosmic-applet-boot-environment</binary>
     </binaries>
@@ -32,4 +32,3 @@
   </keywords>
   <content_rating type="oars-1.1" />
 </component>
-

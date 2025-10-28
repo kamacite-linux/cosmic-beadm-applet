@@ -1,5 +1,5 @@
 name := 'cosmic-applet-boot-environment'
-appid := 'com.github.kamacite-linux.cosmic-applet-boot-environment'
+appid := 'ca.kamacite.cosmic-applet-boot-environment'
 
 rootdir := ''
 prefix := '/usr'
