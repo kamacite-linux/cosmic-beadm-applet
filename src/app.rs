@@ -138,7 +138,7 @@ async fn activate_boot_environment(
 /// Create a COSMIC application from the app model
 impl cosmic::Application for AppModel {
     /// The async executor that will be used to run your application's commands.
-    type Executor = cosmic::executor::Default;
+    type Executor = cosmic::SingleThreadExecutor;
 
     /// Data that your application receives to its init method.
     type Flags = ();
