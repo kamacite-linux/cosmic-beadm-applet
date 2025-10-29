@@ -88,7 +88,7 @@ pub enum Message {
     PopupClosed(Id),
     SubscriptionChannel,
     BootSettingsClicked,
-    ActivateEnvironment(zbus::zvariant::OwnedObjectPath),
+    ActivateEnvironment(OwnedObjectPath),
     BootEnvironmentsLoaded(Vec<BootEnvironmentObject>),
     Connected(zbus::Connection),
 }
