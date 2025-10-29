@@ -194,7 +194,7 @@ impl cosmic::Application for AppModel {
         self.core
             .applet
             .icon_button("drive-multidisk-symbolic")
-            .on_press(Message::TogglePopup)
+            .on_press_down(Message::TogglePopup)
             .into()
     }
 
