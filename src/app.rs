@@ -36,20 +36,32 @@ pub struct BootEnvironmentObject {
 
 impl BootEnvironmentObject {
     /// Construct a BootEnvironmentObject from a D-Bus dictionary of properties.
-    pub fn from_properties(
+    pub fn from_properties<'a, V>(
         path: OwnedObjectPath,
-        props: &std::collections::HashMap<String, zbus::zvariant::OwnedValue>,
-    ) -> Result<Self, zbus::Error> {
-        // TODO: Is there something in zbus that will do this for us?
-        let get_prop = |name: &str| -> Result<zbus::zvariant::OwnedValue, zbus::Error> {
-            match props.get(name) {
-                Some(value) => value.try_clone().map_err(From::from),
-                None => Err(zbus::Error::MissingField),
-            }
-        };
+        props: &'a std::collections::HashMap<String, V>,
+    ) -> Result<Self, zbus::Error>
+    where
+        V: std::borrow::Borrow<zbus::zvariant::Value<'a>>,
+    {
+        // This is a gross but useful wrapper around downcast_ref().
+        fn get_prop<'a, T, V>(
+            props: &'a std::collections::HashMap<String, V>,
+            name: &str,
+        ) -> Result<T, zbus::zvariant::Error>
+        where
+            V: std::borrow::Borrow<zbus::zvariant::Value<'a>>,
+            T: TryFrom<&'a zbus::zvariant::Value<'a>>,
+            <T as TryFrom<&'a zbus::zvariant::Value<'a>>>::Error: Into<zbus::zvariant::Error>,
+        {
+            props
+                .get(name)
+                .ok_or(zbus::zvariant::Error::IncorrectType)?
+                .borrow()
+                .downcast_ref()
+        }
 
         // Special handling for optional properties.
-        let description_str: String = get_prop("Description")?.try_into()?;
+        let description_str: String = get_prop(&props, "Description")?;
         let description = if description_str.is_empty() {
             None
         } else {
@@ -58,12 +70,12 @@ impl BootEnvironmentObject {
 
         Ok(BootEnvironmentObject {
             path,
-            name: get_prop("Name")?.try_into()?,
+            name: get_prop(&props, "Name")?,
             description,
-            active: get_prop("Active")?.try_into()?,
-            next_boot: get_prop("NextBoot")?.try_into()?,
-            boot_once: get_prop("BootOnce")?.try_into()?,
-            created: get_prop("Created")?.try_into()?,
+            active: get_prop(&props, "Active")?,
+            next_boot: get_prop(&props, "NextBoot")?,
+            boot_once: get_prop(&props, "BootOnce")?,
+            created: get_prop(&props, "Created")?,
         })
     }
 }
