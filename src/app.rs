@@ -8,7 +8,7 @@ use cosmic::iced_winit::commands::popup::{destroy_popup, get_popup};
 use cosmic::prelude::*;
 use cosmic::theme;
 use cosmic::widget::{divider, dropdown, text};
-use futures_util::SinkExt;
+use futures_util::{SinkExt, StreamExt};
 use zbus::fdo::ObjectManagerProxy;
 use zbus::zvariant::OwnedObjectPath;
 
@@ -36,19 +36,21 @@ pub struct BootEnvironmentObject {
 
 impl BootEnvironmentObject {
     /// Construct a BootEnvironmentObject from a D-Bus dictionary of properties.
-    pub fn from_properties<'a, V>(
+    pub fn from_properties<'a, K, V>(
         path: OwnedObjectPath,
-        props: &'a std::collections::HashMap<String, V>,
+        props: &'a std::collections::HashMap<K, V>,
     ) -> Result<Self, zbus::Error>
     where
+        K: std::borrow::Borrow<str> + Eq + std::hash::Hash,
         V: std::borrow::Borrow<zbus::zvariant::Value<'a>>,
     {
         // This is a gross but useful wrapper around downcast_ref().
-        fn get_prop<'a, T, V>(
-            props: &'a std::collections::HashMap<String, V>,
+        fn get_prop<'a, T, K, V>(
+            props: &'a std::collections::HashMap<K, V>,
             name: &str,
         ) -> Result<T, zbus::zvariant::Error>
         where
+            K: std::borrow::Borrow<str> + Eq + std::hash::Hash,
             V: std::borrow::Borrow<zbus::zvariant::Value<'a>>,
             T: TryFrom<&'a zbus::zvariant::Value<'a>>,
             <T as TryFrom<&'a zbus::zvariant::Value<'a>>>::Error: Into<zbus::zvariant::Error>,
@@ -98,11 +100,12 @@ pub struct AppModel {
 pub enum Message {
     TogglePopup,
     PopupClosed(Id),
-    SubscriptionChannel,
     BootSettingsClicked,
     ActivateEnvironment(OwnedObjectPath),
     BootEnvironmentsLoaded(Vec<BootEnvironmentObject>),
     Connected(zbus::Connection),
+    Added(BootEnvironmentObject),
+    Removed(OwnedObjectPath),
 }
 
 /// Query boot environments from D-Bus using the provided connection
@@ -308,19 +311,16 @@ impl cosmic::Application for AppModel {
     /// emit messages to the application through a channel. They are started at the
     /// beginning of the application, and persist through its lifetime.
     fn subscription(&self) -> Subscription<Self::Message> {
-        struct MySubscription;
+        struct ObjectManagerSub;
 
-        Subscription::batch(vec![
-            // Create a subscription which emits updates through a channel.
+        if let Some(ref conn) = self.conn {
             Subscription::run_with_id(
-                std::any::TypeId::of::<MySubscription>(),
-                cosmic::iced::stream::channel(4, move |mut channel| async move {
-                    _ = channel.send(Message::SubscriptionChannel).await;
-
-                    futures_util::future::pending().await
-                }),
-            ),
-        ])
+                std::any::TypeId::of::<ObjectManagerSub>(),
+                object_manager_stream(conn.clone()),
+            )
+        } else {
+            Subscription::none()
+        }
     }
 
     /// Handles messages emitted by the application and its widgets.
@@ -329,9 +329,6 @@ impl cosmic::Application for AppModel {
     /// on the application's async runtime.
     fn update(&mut self, message: Self::Message) -> Task<cosmic::Action<Self::Message>> {
         match message {
-            Message::SubscriptionChannel => {
-                // For example purposes only.
-            }
             Message::BootSettingsClicked => {
                 // Placeholder: would open boot settings configuration
                 tracing::info!("Opening boot settings");
@@ -363,6 +360,15 @@ impl cosmic::Application for AppModel {
             Message::BootEnvironmentsLoaded(environments) => {
                 tracing::info!(count = environments.len(), "Loaded boot environments");
                 self.environments = environments;
+            }
+            Message::Added(env) => {
+                tracing::info!(path = ?env.path, name = %env.name, "Boot environment added");
+                // No need to re-sort, we know the new environment is the most recent.
+                self.environments.push(env);
+            }
+            Message::Removed(path) => {
+                tracing::info!(?path, "Boot environment removed");
+                self.environments.retain(|env| env.path != path);
             }
             Message::ActivateEnvironment(path) => {
                 if let Some(conn) = self.conn.clone() {
@@ -424,4 +430,71 @@ impl cosmic::Application for AppModel {
     fn style(&self) -> Option<cosmic::iced_runtime::Appearance> {
         Some(cosmic::applet::style())
     }
+}
+
+/// A stream of Added and Removed messages for the underlying boot environments.
+fn object_manager_stream(
+    conn: zbus::Connection,
+) -> impl cosmic::iced::futures::Stream<Item = Message> {
+    cosmic::iced::stream::channel(32, move |mut channel| async move {
+        let object_manager = match ObjectManagerProxy::builder(&conn)
+            .destination("ca.kamacite.BootEnvironments1")
+            // SAFETY: Safe to unwrap because the destination and path are known to be valid.
+            .unwrap()
+            .path("/ca/kamacite/BootEnvironments")
+            .unwrap()
+            .build()
+            .await
+        {
+            Ok(proxy) => proxy,
+            Err(e) => {
+                tracing::error!(error = ?e, "Failed to create ObjectManager proxy, updates will be ignored");
+                return;
+            }
+        };
+
+        let mut added_stream = match object_manager.receive_interfaces_added().await {
+            Ok(stream) => stream,
+            Err(e) => {
+                tracing::error!(error = ?e, "Failed to start streaming InterfacesAdded signal");
+                return;
+            }
+        };
+
+        let mut removed_stream = match object_manager.receive_interfaces_removed().await {
+            Ok(stream) => stream,
+            Err(e) => {
+                tracing::error!(error = ?e, "Failed to start streaming InterfacesRemoved signal");
+                return;
+            }
+        };
+
+        loop {
+            tokio::select! {
+                Some(signal) = added_stream.next() => {
+                    if let Ok(args) = signal.args() {
+                        if let Some(props) = args.interfaces_and_properties.get("ca.kamacite.BootEnvironment") {
+                            let path = From::from(args.object_path);
+                            match BootEnvironmentObject::from_properties(path, props) {
+                                Ok(env) => {
+                                    // TODO: Should we log errors here?
+                                    let _ = channel.send(Message::Added(env)).await;
+                                }
+                                Err(e) => {
+                                    tracing::error!(error = ?e, "Failed to parse boot environment object");
+                                }
+                            }
+                        }
+                    }
+                }
+                Some(signal) = removed_stream.next() => {
+                    if let Ok(args) = signal.args() {
+                        let path = From::from(args.object_path);
+                        // TODO: Should we log errors here?
+                        let _ = channel.send(Message::Removed(path)).await;
+                    }
+                }
+            }
+        }
+    })
 }
