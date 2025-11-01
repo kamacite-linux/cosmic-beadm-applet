@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
+use std::collections::HashMap;
+
 use cosmic::applet::{menu_button, padded_control};
 use cosmic::cosmic_theme::Spacing;
 use cosmic::iced::widget::{column, row};
@@ -10,7 +12,7 @@ use cosmic::theme;
 use cosmic::widget::{divider, dropdown, text};
 use futures_util::{SinkExt, StreamExt};
 use zbus::fdo::ObjectManagerProxy;
-use zbus::zvariant::OwnedObjectPath;
+use zbus::zvariant;
 
 use crate::dbus::BootEnvironmentProxy;
 use crate::fl;
@@ -19,7 +21,7 @@ use crate::fl;
 #[derive(Debug, Clone)]
 pub struct BootEnvironmentObject {
     /// The D-Bus object path foight n boot environment.
-    pub path: OwnedObjectPath,
+    pub path: zvariant::OwnedObjectPath,
     /// The name of this boot environment.
     pub name: String,
     /// A description for this boot environment, if any.
@@ -37,23 +39,23 @@ pub struct BootEnvironmentObject {
 impl BootEnvironmentObject {
     /// Construct a BootEnvironmentObject from a D-Bus dictionary of properties.
     pub fn from_properties<'a, K, V>(
-        path: OwnedObjectPath,
-        props: &'a std::collections::HashMap<K, V>,
+        path: zvariant::OwnedObjectPath,
+        props: &'a HashMap<K, V>,
     ) -> Result<Self, zbus::Error>
     where
         K: std::borrow::Borrow<str> + Eq + std::hash::Hash,
-        V: std::borrow::Borrow<zbus::zvariant::Value<'a>>,
+        V: std::borrow::Borrow<zvariant::Value<'a>>,
     {
         // This is a gross but useful wrapper around downcast_ref().
         fn get_prop<'a, T, K, V>(
-            props: &'a std::collections::HashMap<K, V>,
+            props: &'a HashMap<K, V>,
             name: &str,
         ) -> Result<T, zbus::zvariant::Error>
         where
             K: std::borrow::Borrow<str> + Eq + std::hash::Hash,
-            V: std::borrow::Borrow<zbus::zvariant::Value<'a>>,
-            T: TryFrom<&'a zbus::zvariant::Value<'a>>,
-            <T as TryFrom<&'a zbus::zvariant::Value<'a>>>::Error: Into<zbus::zvariant::Error>,
+            V: std::borrow::Borrow<zvariant::Value<'a>>,
+            T: TryFrom<&'a zvariant::Value<'a>>,
+            <T as TryFrom<&'a zvariant::Value<'a>>>::Error: Into<zvariant::Error>,
         {
             props
                 .get(name)
@@ -101,11 +103,11 @@ pub enum Message {
     TogglePopup,
     PopupClosed(Id),
     BootSettingsClicked,
-    ActivateEnvironment(OwnedObjectPath),
+    ActivateEnvironment(zvariant::OwnedObjectPath),
     BootEnvironmentsLoaded(Vec<BootEnvironmentObject>),
     Connected(zbus::Connection),
     Added(BootEnvironmentObject),
-    Removed(OwnedObjectPath),
+    Removed(zvariant::OwnedObjectPath),
 }
 
 /// Query boot environments from D-Bus using the provided connection
@@ -136,7 +138,7 @@ async fn load_boot_environments(
 /// Activate a boot environment by its D-Bus object path using the provided connection
 async fn activate_boot_environment(
     connection: &zbus::Connection,
-    path: &OwnedObjectPath,
+    path: &zvariant::OwnedObjectPath,
 ) -> Result<(), zbus::Error> {
     // Create a proxy for this boot environment
     let proxy = BootEnvironmentProxy::builder(connection)
@@ -272,7 +274,7 @@ impl cosmic::Application for AppModel {
                 .position(|e| e.boot_once)
                 .or(self.environments.iter().position(|e| e.next_boot));
 
-            let paths: Vec<OwnedObjectPath> = self
+            let paths: Vec<zvariant::OwnedObjectPath> = self
                 .environments
                 .iter()
                 .map(|env| env.path.clone())
