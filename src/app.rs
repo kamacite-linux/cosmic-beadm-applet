@@ -108,6 +108,7 @@ pub enum Message {
     Connected(zbus::Connection),
     Added(BootEnvironmentObject),
     Removed(zvariant::OwnedObjectPath),
+    BootEnvironmentsModified,
 }
 
 /// Query boot environments from D-Bus using the provided connection
@@ -314,12 +315,19 @@ impl cosmic::Application for AppModel {
     /// beginning of the application, and persist through its lifetime.
     fn subscription(&self) -> Subscription<Self::Message> {
         struct ObjectManagerSub;
+        struct PropertiesChangedSub;
 
         if let Some(ref conn) = self.conn {
-            Subscription::run_with_id(
-                std::any::TypeId::of::<ObjectManagerSub>(),
-                object_manager_stream(conn.clone()),
-            )
+            Subscription::batch(vec![
+                Subscription::run_with_id(
+                    std::any::TypeId::of::<ObjectManagerSub>(),
+                    object_manager_stream(conn.clone()),
+                ),
+                Subscription::run_with_id(
+                    std::any::TypeId::of::<PropertiesChangedSub>(),
+                    properties_changed_stream(conn.clone()),
+                ),
+            ])
         } else {
             Subscription::none()
         }
@@ -372,17 +380,10 @@ impl cosmic::Application for AppModel {
                 tracing::info!(?path, "Boot environment removed");
                 self.environments.retain(|env| env.path != path);
             }
-            Message::ActivateEnvironment(path) => {
+            Message::BootEnvironmentsModified => {
                 if let Some(conn) = self.conn.clone() {
                     return Task::perform(
-                        async move {
-                            // Try to activate
-                            if let Err(e) = activate_boot_environment(&conn, &path).await {
-                                tracing::error!(?path, error = ?e, "Failed to activate boot environments");
-                            }
-                            // Always reload to get current state
-                            load_boot_environments(&conn).await
-                        },
+                        async move { load_boot_environments(&conn).await },
                         |result| match result {
                             Ok(environments) => {
                                 cosmic::Action::App(Message::BootEnvironmentsLoaded(environments))
@@ -391,6 +392,20 @@ impl cosmic::Application for AppModel {
                                 tracing::error!(error = ?e, "Failed to reload boot environments");
                                 cosmic::Action::None
                             }
+                        },
+                    );
+                }
+            }
+            Message::ActivateEnvironment(path) => {
+                if let Some(conn) = self.conn.clone() {
+                    let path_ref = path.clone();
+                    return Task::perform(
+                        async move { activate_boot_environment(&conn, &path_ref).await },
+                        move |result| {
+                            if let Err(e) = result {
+                                tracing::error!(?path, error = ?e, "Failed to activate boot environment");
+                            }
+                            cosmic::Action::None
                         },
                     );
                 } else {
@@ -495,6 +510,82 @@ fn object_manager_stream(
                         // TODO: Should we log errors here?
                         let _ = channel.send(Message::Removed(path)).await;
                     }
+                }
+            }
+        }
+    })
+}
+
+/// A stream of PropertiesChanged messages for all boot environments.
+fn properties_changed_stream(
+    conn: zbus::Connection,
+) -> impl cosmic::iced::futures::Stream<Item = Message> {
+    cosmic::iced::stream::channel(32, move |mut channel| async move {
+        // Match against all PropertiesChanged signals in the boot environment
+        // namespace.
+        let rule = match zbus::MatchRule::builder()
+            .msg_type(zbus::message::Type::Signal)
+            .interface("org.freedesktop.DBus.Properties")
+            .and_then(|b| b.member("PropertiesChanged"))
+            .and_then(|b| b.path_namespace("/ca/kamacite/BootEnvironments"))
+        {
+            Ok(builder) => builder.build(),
+            Err(e) => {
+                tracing::error!(error = ?e, "Failed to build match rule for PropertiesChanged");
+                return;
+            }
+        };
+
+        let mut stream = match zbus::MessageStream::for_match_rule(rule, &conn, Some(32)).await {
+            Ok(stream) => stream,
+            Err(e) => {
+                tracing::error!(error = ?e, "Failed to start streaming PropertiesChanged signals");
+                return;
+            }
+        };
+
+        while let Some(msg_result) = stream.next().await {
+            match msg_result {
+                Ok(msg) => {
+                    // We treat all property changes as triggering a reload.
+                    // This isn't terribly efficient, but it does sidestep our
+                    // getting out of sync with the backend by being too clever
+                    // with our caching.
+                    //
+                    // Unfortunately, it also means that when multiple
+                    // properties change -- which is common when a boot
+                    // environment is activated -- we reload multiple times in
+                    // succession.
+                    let _ = channel.send(Message::BootEnvironmentsModified).await;
+
+                    // We only need to parse the message for debug logs, so make
+                    // this whole step conditional.
+                    if tracing::enabled!(tracing::Level::DEBUG) {
+                        match msg
+                            .body()
+                            .deserialize::<(String, HashMap<String, zvariant::Value<'_>>, Vec<String>)>()
+                        {
+                            Ok((iface, changed, _)) => {
+                                let props: Vec<&str> = changed.keys().map(|s| s.as_str()).collect();
+                                tracing::debug!(
+                                    path = msg
+                                        .header()
+                                        .path()
+                                        .map(|path| path.to_string())
+                                        .unwrap_or_default(),
+                                    iface,
+                                    props = props.join(","),
+                                    "One or more BootEnvironment properties updated"
+                                );
+                            }
+                            Err(e) => {
+                                tracing::error!(error = ?e, "Failed to parse PropertiesChanged signal");
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(error = ?e, "Error receiving PropertiesChanged signal");
                 }
             }
         }
