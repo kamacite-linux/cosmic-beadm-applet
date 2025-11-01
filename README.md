@@ -1,6 +1,8 @@
-# Cosmic Applet Boot Environment
+# COSMIC ZFS Boot Environment Applet
 
-A COSMIC applet to help swap between ZFS boot environments
+A COSMIC desktop applet to help swap between ZFS boot environments with [`beadm`](https://github.com/kamacite-linux/beadm).
+
+![Screenshot showing the applet with an active boot environment](resources/applet.png)
 
 ## Installation
 
