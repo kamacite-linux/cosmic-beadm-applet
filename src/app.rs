@@ -402,9 +402,15 @@ impl cosmic::Application for AppModel {
                     return Task::perform(
                         async move { activate_boot_environment(&conn, &path_ref).await },
                         move |result| {
-                            if let Err(e) = result {
-                                tracing::error!(?path, error = ?e, "Failed to activate boot environment");
-                            }
+                            match result {
+                                Ok(()) => tracing::info!(
+                                    path = path.to_string(),
+                                    "Temporarily activated boot environment"
+                                ),
+                                Err(e) => {
+                                    tracing::error!(path = path.to_string(), error = ?e, "Failed to activate boot environment")
+                                }
+                            };
                             cosmic::Action::None
                         },
                     );
