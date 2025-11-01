@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use cosmic::applet::{menu_button, padded_control};
 use cosmic::cosmic_theme::Spacing;
 use cosmic::iced::widget::{column, row};
-use cosmic::iced::{window::Id, Alignment, Length, Limits, Subscription};
+use cosmic::iced::{window::Id, Alignment, Length, Subscription};
 use cosmic::iced_winit::commands::popup::{destroy_popup, get_popup};
 use cosmic::prelude::*;
 use cosmic::theme;
@@ -426,18 +426,13 @@ impl cosmic::Application for AppModel {
                 } else {
                     let new_id = Id::unique();
                     self.popup.replace(new_id);
-                    let mut popup_settings = self.core.applet.get_popup_settings(
+                    let popup_settings = self.core.applet.get_popup_settings(
                         self.core.main_window_id().unwrap(),
                         new_id,
                         None,
                         None,
                         None,
                     );
-                    popup_settings.positioner.size_limits = Limits::NONE
-                        .max_width(372.0)
-                        .min_width(300.0)
-                        .min_height(200.0)
-                        .max_height(1080.0);
                     get_popup(popup_settings)
                 }
             }
