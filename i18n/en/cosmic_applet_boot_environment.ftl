@@ -1,14 +1,4 @@
-app-title = Cosmic Applet Boot Environment
-about = About
-view = View
-welcome = Welcome to COSMIC! ✨
-page-id = Page { $num }
-git-description = Git commit {$hash} on {$date}
-boot-settings = Boot settings...
-status-current = Current
-status-current-temporary = Current, temporary
-status-next-boot = Next boot
-status-boot-once = Boot once
 active-boot-env = Active Boot Environment
+boot-settings = Boot settings...
 no-active-boot-env = No active boot environment detected
 reboot-into = Reboot into...
