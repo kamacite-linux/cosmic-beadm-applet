@@ -1,5 +1,5 @@
 name := 'cosmic-applet-boot-environment'
-appid := 'ca.kamacite.cosmic-applet-boot-environment'
+appid := 'ca.kamacite.CosmicBootEnvironmentApplet'
 
 rootdir := ''
 prefix := '/usr'
@@ -60,8 +60,8 @@ run *args:
 # Installs files
 install:
     install -Dm0755 {{bin-src}} {{bin-dst}}
-    install -Dm0644 resources/app.desktop {{desktop-dst}}
-    install -Dm0644 resources/app.metainfo.xml {{appdata-dst}}
+    install -Dm0644 {{desktop-src}} {{desktop-dst}}
+    install -Dm0644 {{appdata-src}} {{appdata-dst}}
 
 # Uninstalls installed files
 uninstall:
