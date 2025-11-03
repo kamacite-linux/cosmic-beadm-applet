@@ -14,13 +14,13 @@
     <p>Requires the <code>beadm</code> utility to be installed on your system.</p>
   </description>
   <icon type="stock">drive-multidisk-symbolic</icon>
-  <url type="homepage">https://github.com/kamacite-linux/cosmic-applet-boot-environment</url>
-  <url type="bugtracker">https://github.com/kamacite-linux/cosmic-applet-boot-environment/issues</url>
-  <url type="vcs-browser">https://github.com/kamacite-linux/cosmic-applet-boot-environment</url>
+  <url type="homepage">https://github.com/kamacite-linux/cosmic-beadm-applet</url>
+  <url type="bugtracker">https://github.com/kamacite-linux/cosmic-beadm-applet/issues</url>
+  <url type="vcs-browser">https://github.com/kamacite-linux/cosmic-beadm-applet</url>
   <launchable type="desktop-id">ca.kamacite.CosmicBootEnvironmentApplet.desktop</launchable>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/kamacite-linux/cosmic-applet-boot-environment/main/resources/applet.png</image>
+      <image>https://raw.githubusercontent.com/kamacite-linux/cosmic-beadm-applet/main/resources/applet.png</image>
       <caption>Swap between ZFS boot environments directly from the COSMIC panel</caption>
     </screenshot>
   </screenshots>
