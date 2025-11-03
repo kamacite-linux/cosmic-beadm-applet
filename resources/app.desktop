@@ -2,7 +2,7 @@
 Name=Boot Environment Applet
 Comment=A COSMIC applet to help swap between ZFS boot environments
 Type=Application
-Icon=ca.kamacite.cosmic-applet-boot-environment
+Icon=drive-multidisk-symbolic
 Exec=cosmic-applet-boot-environment
 Terminal=false
 StartupNotify=true

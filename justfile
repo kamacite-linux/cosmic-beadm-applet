@@ -17,11 +17,10 @@ appdata := appid + '.metainfo.xml'
 appdata-src := 'resources' / appdata
 appdata-dst := clean(rootdir / prefix) / 'share' / 'appdata' / appdata
 
-icons-src := 'resources' / 'icons' / 'hicolor'
-icons-dst := clean(rootdir / prefix) / 'share' / 'icons' / 'hicolor'
-
-icon-svg-src := icons-src / 'scalable' / 'apps' / 'icon.svg'
-icon-svg-dst := icons-dst / 'scalable' / 'apps' / appid + '.svg'
+# icons-src := 'resources' / 'icons' / 'hicolor'
+# icons-dst := clean(rootdir / prefix) / 'share' / 'icons' / 'hicolor'
+# icon-svg-src := icons-src / 'scalable' / 'apps' / 'icon.svg'
+# icon-svg-dst := icons-dst / 'scalable' / 'apps' / appid + '.svg'
 
 # Default recipe which runs `just build-release`
 default: build-release
@@ -63,11 +62,10 @@ install:
     install -Dm0755 {{bin-src}} {{bin-dst}}
     install -Dm0644 resources/app.desktop {{desktop-dst}}
     install -Dm0644 resources/app.metainfo.xml {{appdata-dst}}
-    install -Dm0644 {{icon-svg-src}} {{icon-svg-dst}}
 
 # Uninstalls installed files
 uninstall:
-    rm -f {{bin-dst}} {{desktop-dst}} {{appdata-dst}} {{icon-svg-dst}}
+    rm -f {{bin-dst}} {{desktop-dst}} {{appdata-dst}}
 
 # Vendor dependencies locally
 vendor:
