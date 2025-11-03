@@ -3,18 +3,30 @@
   <id>ca.kamacite.cosmic-applet-boot-environment</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MPL-2.0</project_license>
-  <name>Cosmic Applet Boot Environment</name>
+  <project_group>COSMIC</project_group>
+  <developer id="ca.kamacite">
+    <name>Kamacite Linux</name>
+  </developer>
+  <name>COSMIC Boot Environment Applet</name>
   <summary>A COSMIC applet to help swap between ZFS boot environments</summary>
-  <icon type="remote" width="64" height="64" scale="1">
-    https://github.com/kamacite-linux/cosmic-applet-boot-environment/raw/main/resources/icons/hicolor/scalable/apps/icon.svg
-  </icon>
+  <description>
+    <p>A simple applet to help swap between ZFS boot environments directly from the COSMIC panel.</p>
+    <p>Requires the <code>beadm</code> utility to be installed on your system.</p>
+  </description>
+  <icon type="stock">drive-multidisk-symbolic</icon>
+  <url type="homepage">https://github.com/kamacite-linux/cosmic-applet-boot-environment</url>
+  <url type="bugtracker">https://github.com/kamacite-linux/cosmic-applet-boot-environment/issues</url>
   <url type="vcs-browser">https://github.com/kamacite-linux/cosmic-applet-boot-environment</url>
   <launchable type="desktop-id">ca.kamacite.cosmic-applet-boot-environment.desktop</launchable>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/kamacite-linux/cosmic-applet-boot-environment/main/resources/applet.png</image>
+      <caption>Swap between ZFS boot environments directly from the COSMIC panel</caption>
+    </screenshot>
+  </screenshots>
   <provides>
-    <id>ca.kamacite.cosmic-applet-boot-environment</id>
-    <binaries>
-      <binary>cosmic-applet-boot-environment</binary>
-    </binaries>
+    <id>com.system76.CosmicApplet</id>
+    <binary>cosmic-applet-boot-environment</binary>
   </provides>
   <requires>
     <display_length compare="ge">360</display_length>
@@ -25,10 +37,12 @@
     <control>touch</control>
   </supports>
   <categories>
-    <category>COSMIC</category>
+    <category>System</category>
+    <category>Utility</category>
   </categories>
   <keywords>
     <keyword>COSMIC</keyword>
+    <keyword>ZFS</keyword>
   </keywords>
   <content_rating type="oars-1.1" />
 </component>
