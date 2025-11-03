@@ -41,7 +41,7 @@ pub struct BootEnvironmentObject {
 }
 
 impl BootEnvironmentObject {
-    /// Construct a BootEnvironmentObject from a D-Bus dictionary of properties.
+    /// Construct a `BootEnvironmentObject` from a D-Bus dictionary of properties.
     pub fn from_properties<'a, K, V>(
         path: zvariant::OwnedObjectPath,
         props: &'a HashMap<K, V>,
@@ -69,7 +69,7 @@ impl BootEnvironmentObject {
         }
 
         // Special handling for optional properties.
-        let description_str: String = get_prop(&props, "Description")?;
+        let description_str: String = get_prop(props, "Description")?;
         let description = if description_str.is_empty() {
             None
         } else {
@@ -78,12 +78,12 @@ impl BootEnvironmentObject {
 
         Ok(BootEnvironmentObject {
             path,
-            name: get_prop(&props, "Name")?,
+            name: get_prop(props, "Name")?,
             description,
-            active: get_prop(&props, "Active")?,
-            next_boot: get_prop(&props, "NextBoot")?,
-            boot_once: get_prop(&props, "BootOnce")?,
-            created: get_prop(&props, "Created")?,
+            active: get_prop(props, "Active")?,
+            next_boot: get_prop(props, "NextBoot")?,
+            boot_once: get_prop(props, "BootOnce")?,
+            created: get_prop(props, "Created")?,
         })
     }
 }
@@ -351,7 +351,7 @@ impl cosmic::Application for AppModel {
                 tracing::info!(
                     unique_name = conn
                         .unique_name()
-                        .map(|name| name.to_string())
+                        .map(std::string::ToString::to_string)
                         .unwrap_or_default(),
                     "Connected to system bus"
                 );
@@ -412,17 +412,16 @@ impl cosmic::Application for AppModel {
                                     "Temporarily activated boot environment"
                                 ),
                                 Err(e) => {
-                                    tracing::error!(path = path.to_string(), error = ?e, "Failed to activate boot environment")
+                                    tracing::error!(path = path.to_string(), error = ?e, "Failed to activate boot environment");
                                 }
-                            };
+                            }
                             cosmic::Action::None
                         },
                     );
-                } else {
-                    // It should never be possible to send this message without
-                    // an active D-Bus connection.
-                    unreachable!("no D-Bus connection available");
                 }
+                // It should never be possible to send this message without an
+                // active D-Bus connection.
+                unreachable!("no D-Bus connection available");
             }
             Message::TogglePopup => {
                 return if let Some(p) = self.popup.take() {
@@ -521,7 +520,7 @@ fn object_manager_stream(
     })
 }
 
-/// A stream of PropertiesChanged messages for all boot environments.
+/// A stream of `PropertiesChanged` messages for all boot environments.
 fn properties_changed_stream(
     conn: zbus::Connection,
 ) -> impl cosmic::iced::futures::Stream<Item = Message> {
@@ -571,12 +570,12 @@ fn properties_changed_stream(
                             .deserialize::<(String, HashMap<String, zvariant::Value<'_>>, Vec<String>)>()
                         {
                             Ok((iface, changed, _)) => {
-                                let props: Vec<&str> = changed.keys().map(|s| s.as_str()).collect();
+                                let props: Vec<&str> = changed.keys().map(std::string::String::as_str).collect();
                                 tracing::debug!(
                                     path = msg
                                         .header()
                                         .path()
-                                        .map(|path| path.to_string())
+                                        .map(std::string::ToString::to_string)
                                         .unwrap_or_default(),
                                     iface,
                                     props = props.join(","),

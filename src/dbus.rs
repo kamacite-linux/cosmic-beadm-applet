@@ -39,6 +39,7 @@ pub trait BootEnvironment {
     fn destroy_snapshot(&self, snapshot: &str) -> zbus::Result<()>;
 
     /// GetSnapshots method
+    #[allow(clippy::type_complexity)]
     fn get_snapshots(&self) -> zbus::Result<Vec<(String, String, String, u64, i64)>>;
 
     /// Mount method
